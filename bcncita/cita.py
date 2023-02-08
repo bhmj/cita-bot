@@ -37,10 +37,11 @@ __all__ = [
     "OperationType",
     "Office",
     "Province",
+    "ProvinceName",
 ]
 
 CYCLES = 144
-REFRESH_PAGE_CYCLES = 12
+REFRESH_PAGE_CYCLES = 4
 
 DELAY = 30  # timeout for page load
 
@@ -101,6 +102,9 @@ class Office(str, Enum):
     PLAYA_AMERICAS = "2"  # CNP-Playa de las Américas, Av. de los Pueblos, 2
     PUERTO_CRUZ = "3"  # CNP-Puerto de la Cruz/Los Realejos, Av. del Campo y Llarena, 3
 
+    # Valencia
+    SAGUNTO = "7"
+
 
 class Province(str, Enum):
     A_CORUÑA = "15"
@@ -156,6 +160,9 @@ class Province(str, Enum):
     ZAMORA = "49"
     ZARAGOZA = "50"
 
+class ProvinceName(str, Enum):
+    VALENCIA = "Valencia"
+    # ADD YOUR PROVINCE HERE
 
 @dataclass
 class CustomerProfile:
@@ -164,7 +171,8 @@ class CustomerProfile:
     doc_value: str  # Passport? "123123123"; Nie? "Y1111111M"
     phone: str
     email: str
-    province: Province = Province.BARCELONA
+    province: Province = Province.VALENCIA
+    province_name: ProvinceName = ProvinceName.VALENCIA
     operation_code: OperationType = OperationType.TOMA_HUELLAS
     country: str = "RUSIA"
     year_of_birth: Optional[str] = None
@@ -207,7 +215,8 @@ def init_wedriver(context: CustomerProfile):
     if context.chrome_profile_name:
         options.add_argument(f"profile-directory={context.chrome_profile_name}")
 
-    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.63 Safari/537.36"
+    # ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.63 Safari/537.36"
+    ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36"
 
     options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
     options.add_experimental_option("useAutomationExtension", False)
@@ -270,19 +279,14 @@ def start_with(driver: webdriver, context: CustomerProfile, cycles: int = CYCLES
     ]:
         operation_param = "tramiteGrupo[0]"
 
-    fast_forward_url = "https://icp.administracionelectronica.gob.es/{}/citar?p={}".format(
-        operation_category, context.province
-    )
-    fast_forward_url2 = "https://icp.administracionelectronica.gob.es/{}/acInfo?{}={}".format(
-        operation_category, operation_param, context.operation_code
-    )
+    start_url = "https://icp.administracionelectronica.gob.es/icpplus/index.html"
 
     success = False
     result = False
     for i in range(cycles):
         try:
             logging.info(f"\033[33m[Attempt {i + 1}/{cycles}]\033[0m")
-            result = cycle_cita(driver, context, fast_forward_url, fast_forward_url2)
+            result = cycle_cita(driver, context, start_url)
         except KeyboardInterrupt:
             raise
         except TimeoutException:
@@ -656,41 +660,21 @@ def select_office(driver: webdriver, context: CustomerProfile):
         return None
 
 
-def office_selection(driver: webdriver, context: CustomerProfile):
+def cita_details(driver: webdriver, context: CustomerProfile):
     driver.execute_script("enviar('solicitud');")
 
     for i in range(REFRESH_PAGE_CYCLES):
         resp_text = body_text(driver)
 
-        if "Seleccione la oficina donde solicitar la cita" in resp_text:
-            logging.info("[Step 2/6] Office selection")
-
-            # Office selection:
-            time.sleep(0.3)
-            try:
-                WebDriverWait(driver, DELAY).until(
-                    EC.presence_of_element_located((By.ID, "btnSiguiente"))
-                )
-            except TimeoutException:
-                logging.error("Timed out waiting for offices to load")
-                return None
-
-            res = select_office(driver, context)
-            if res is None:
-                time.sleep(5)
-                driver.refresh()
-                continue
-
-            btn = driver.find_element(By.ID, "btnSiguiente")
-            btn.send_keys(Keys.ENTER)
-            return True
-        elif "En este momento no hay citas disponibles" in resp_text:
+        if "En este momento no hay citas disponibles" in resp_text:
+            logging.info("No citas disponibles :(")
             time.sleep(5)
             driver.refresh()
             continue
         else:
-            logging.info("[Step 2/6] Office selection -> No offices")
-            return None
+            logging.info("Something happens")
+            speaker.say("PLEASE PAY ATTENTION")
+            return True
 
 
 def phone_mail(driver: webdriver, context: CustomerProfile):
@@ -767,24 +751,23 @@ def log_backoff(details):
     on_backoff=log_backoff,
     logger=None,
 )
-def initial_page(driver: webdriver, context: CustomerProfile, fast_forward_url, fast_forward_url2):
+
+def select_province(driver: webdriver, context: CustomerProfile, start_url):
+    logging.info("Page 0: Selecting province")
     if context.first_load:
         driver.delete_all_cookies()
-
-    driver.set_page_load_timeout(300 if context.first_load else 50)
-    # Fix chromedriver 103 bug
-    time.sleep(1)
-    driver.get(fast_forward_url)
-    time.sleep(5)
-    if context.first_load:
         try:
             driver.execute_script("window.localStorage.clear();")
             driver.execute_script("window.sessionStorage.clear();")
         except Exception as e:
             logging.error(e)
             pass
-    driver.get(fast_forward_url2)
-    time.sleep(5)
+
+    driver.set_page_load_timeout(300 if context.first_load else 50)
+
+    driver.get(start_url)
+    # Fix chromedriver 103 bug
+    time.sleep(2)
 
     resp_text = body_text(driver)
     if "INTERNET CITA PREVIA" not in resp_text:
@@ -793,11 +776,89 @@ def initial_page(driver: webdriver, context: CustomerProfile, fast_forward_url, 
 
     context.first_load = False
 
+    try:
+        WebDriverWait(driver, DELAY).until(EC.presence_of_element_located((By.ID, "form")))
+    except TimeoutException:
+        logging.error("Timed out waiting for form to load")
+        return None
 
-def cycle_cita(driver: webdriver, context: CustomerProfile, fast_forward_url, fast_forward_url2):
-    initial_page(driver, context, fast_forward_url, fast_forward_url2)
+    # Select province
+    select = Select(driver.find_element(By.ID, "form"))
+    time.sleep(0.5)
+    logging.info(f"selecting {context.province_name.value}")
+    select.select_by_visible_text(context.province_name.value)
 
-    # 1. Instructions page:
+    time.sleep(0.1)
+    driver.find_element(By.ID, "btnAceptar").click()
+
+    return True
+
+
+def select_oficina(driver: webdriver, context: CustomerProfile):
+    if not context.auto_office:
+        speaker.say("MAKE A CHOICE")
+        logging.info("Select office and press ENTER")
+        input()
+        return True
+    else:
+        try:
+            WebDriverWait(driver, DELAY).until(EC.presence_of_element_located((By.ID, "sede")))
+        except TimeoutException:
+            logging.error("Timed out waiting for sede to load")
+            return None
+        el = driver.find_element(By.ID, "sede")
+        select = Select(el)
+        if context.save_artifacts:
+            offices_path = os.path.join(os.getcwd(), f"offices-{dt.now()}.html".replace(":", "-"))
+            with io.open(offices_path, "w", encoding="utf-8") as f:
+                f.write(el.get_attribute("innerHTML"))
+
+        if context.offices:
+            for office in context.offices:
+                try:
+                    select.select_by_value(office.value)
+                    logging.info("Office selected")
+                    return True
+                except Exception as e:
+                    logging.error(e)
+                    if context.operation_code == OperationType.RECOGIDA_DE_TARJETA:
+                        return None
+
+        for i in range(5):
+            options = list(filter(lambda o: o.get_attribute("value") != "", select.options))
+            default_count = len(select.options)
+            first_element = 0 if len(options) == default_count else 1
+            select.select_by_index(random.randint(first_element, default_count - 1))
+            if el.get_attribute("value") not in context.except_offices:  # type: ignore
+                logging.info("Random office selected")
+                return True
+            continue
+
+        return None
+
+
+def select_operation(driver: webdriver, context: CustomerProfile):
+    time.sleep(2)
+    try:
+        WebDriverWait(driver, DELAY).until(EC.presence_of_element_located((By.ID, "tramiteGrupo[0]")))
+    except TimeoutException:
+        logging.error("Timed out waiting for operation to load")
+        return None
+    el = driver.find_element(By.ID, "tramiteGrupo[0]")
+    select = Select(el)
+    try:
+        select.select_by_value(context.operation_code.value)
+        logging.info("Operation selected")
+        return True
+    except Exception as e:
+        logging.error(e)
+
+    logging.info("Office selected")
+
+
+def skip_instructions(driver: webdriver, context: CustomerProfile):
+    time.sleep(0.5)
+    logging.info("We are on instructions page")
     try:
         WebDriverWait(driver, DELAY).until(EC.presence_of_element_located((By.ID, "btnEntrar")))
     except TimeoutException:
@@ -808,10 +869,33 @@ def cycle_cita(driver: webdriver, context: CustomerProfile, fast_forward_url, fa
         logging.info("Instructions page loaded")
         return True
 
+    time.sleep(0.5)
     driver.find_element(By.ID, "btnEntrar").send_keys(Keys.ENTER)
+    return None
 
-    # 2. Personal info:
-    logging.info("[Step 1/6] Personal info")
+
+def cycle_cita(driver: webdriver, context: CustomerProfile, start_url):
+
+    # page 0: Select province
+    select_province(driver, context, start_url)
+
+    # page 1: Select oficina
+    select_oficina(driver, context)
+
+    # page 1: Select operation
+    select_operation(driver, context)
+
+    # page 1: Next
+    driver.find_element(By.ID, "btnAceptar").click()
+
+    # page 2: Instructions
+    res = skip_instructions(driver, context)
+    if res == True:
+        return res
+
+    # page 3: operation specific data
+    logging.info(f"Entering operation specific data ({context.operation_code})")
+    time.sleep(0.5)
     success = False
     if context.operation_code == OperationType.TOMA_HUELLAS:
         success = toma_huellas_step2(driver, context)
@@ -836,9 +920,12 @@ def cycle_cita(driver: webdriver, context: CustomerProfile, fast_forward_url, fa
         success = asignacion_nie_step2(driver, context)
 
     if not success:
+        logging.info("failed to enter operation specific data")
         return None
+    
+    logging.info("Operation specific data entered OK")
 
-    time.sleep(2)
+    time.sleep(5)
     driver.find_element(By.ID, "btnEnviar").send_keys(Keys.ENTER)
 
     try:
@@ -852,12 +939,14 @@ def cycle_cita(driver: webdriver, context: CustomerProfile, fast_forward_url, fa
         logging.error("Timed out waiting for exact time")
         return None
 
-    # 3. Solicitar cita:
-    selection_result = office_selection(driver, context)
-    if selection_result is None:
+    # page 4: cita details
+    logging.info("Cita details")
+    result = cita_details(driver, context)
+    if result is None:
         return None
 
-    # 4. Contact info:
+    # page 4: contact info
+    logging.info("Contact info")
     return phone_mail(driver, context)
 
 
