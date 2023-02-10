@@ -174,7 +174,7 @@ class CustomerProfile:
     province: Province = Province.VALENCIA
     province_name: ProvinceName = ProvinceName.VALENCIA
     operation_code: OperationType = OperationType.TOMA_HUELLAS
-    country: str = "RUSIA"
+    country: str = ""
     year_of_birth: Optional[str] = None
     offices: Optional[list] = field(default_factory=list)
     except_offices: Optional[list] = field(default_factory=list)
@@ -215,7 +215,6 @@ def init_wedriver(context: CustomerProfile):
     if context.chrome_profile_name:
         options.add_argument(f"profile-directory={context.chrome_profile_name}")
 
-    # ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.63 Safari/537.36"
     ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36"
 
     options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
@@ -672,8 +671,7 @@ def cita_details(driver: webdriver, context: CustomerProfile):
             driver.refresh()
             continue
         else:
-            logging.info("Something happens")
-            speaker.say("PLEASE PAY ATTENTION")
+            logging.info("Possibile cita ahead")
             return True
 
 
@@ -879,13 +877,13 @@ def cycle_cita(driver: webdriver, context: CustomerProfile, start_url):
     # page 0: Select province
     select_province(driver, context, start_url)
 
-    # page 1: Select oficina
+    # page 1-1: Select oficina
     select_oficina(driver, context)
 
-    # page 1: Select operation
+    # page 1-2: Select operation
     select_operation(driver, context)
 
-    # page 1: Next
+    # page 1-3: Next
     driver.find_element(By.ID, "btnAceptar").click()
 
     # page 2: Instructions
@@ -925,7 +923,7 @@ def cycle_cita(driver: webdriver, context: CustomerProfile, start_url):
     
     logging.info("Operation specific data entered OK")
 
-    time.sleep(5)
+    time.sleep(3)
     driver.find_element(By.ID, "btnEnviar").send_keys(Keys.ENTER)
 
     try:
