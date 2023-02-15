@@ -764,8 +764,9 @@ def select_province(driver: webdriver, context: CustomerProfile, start_url):
     driver.set_page_load_timeout(300 if context.first_load else 50)
 
     driver.get(start_url)
+
     # Fix chromedriver 103 bug
-    time.sleep(2)
+    time.sleep(0.2)
 
     resp_text = body_text(driver)
     if "INTERNET CITA PREVIA" not in resp_text:
@@ -782,7 +783,6 @@ def select_province(driver: webdriver, context: CustomerProfile, start_url):
 
     # Select province
     select = Select(driver.find_element(By.ID, "form"))
-    time.sleep(0.5)
     logging.info(f"selecting {context.province_name.value}")
     select.select_by_visible_text(context.province_name.value)
 
@@ -836,7 +836,7 @@ def select_oficina(driver: webdriver, context: CustomerProfile):
 
 
 def select_operation(driver: webdriver, context: CustomerProfile):
-    time.sleep(2)
+    time.sleep(0.2)
     try:
         WebDriverWait(driver, DELAY).until(EC.presence_of_element_located((By.ID, "tramiteGrupo[0]")))
     except TimeoutException:
@@ -855,7 +855,7 @@ def select_operation(driver: webdriver, context: CustomerProfile):
 
 
 def skip_instructions(driver: webdriver, context: CustomerProfile):
-    time.sleep(0.5)
+    time.sleep(0.1)
     logging.info("We are on instructions page")
     try:
         WebDriverWait(driver, DELAY).until(EC.presence_of_element_located((By.ID, "btnEntrar")))
@@ -867,7 +867,7 @@ def skip_instructions(driver: webdriver, context: CustomerProfile):
         logging.info("Instructions page loaded")
         return True
 
-    time.sleep(0.5)
+    time.sleep(0.1)
     driver.find_element(By.ID, "btnEntrar").send_keys(Keys.ENTER)
     return None
 
@@ -923,7 +923,7 @@ def cycle_cita(driver: webdriver, context: CustomerProfile, start_url):
     
     logging.info("Operation specific data entered OK")
 
-    time.sleep(3)
+    time.sleep(0.5)
     driver.find_element(By.ID, "btnEnviar").send_keys(Keys.ENTER)
 
     try:
@@ -961,7 +961,7 @@ def cita_selection(driver: webdriver, context: CustomerProfile):
         if not position:
             return None
 
-        time.sleep(2)
+        time.sleep(0.2)
         success = process_captcha(driver, context)
         if not success:
             return None
@@ -1014,7 +1014,7 @@ def cita_selection(driver: webdriver, context: CustomerProfile):
                 return None
             slot = slots[best_date][0]
 
-            time.sleep(2)
+            time.sleep(0.2)
             success = process_captcha(driver, context)
             if not success:
                 return None
