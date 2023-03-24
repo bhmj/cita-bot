@@ -104,6 +104,7 @@ class Office(str, Enum):
 
     # Valencia
     SAGUNTO = "7"
+    ZAPADORES = "12"
 
 
 class Province(str, Enum):
@@ -765,11 +766,24 @@ def select_province(driver: webdriver, context: CustomerProfile, start_url):
 
     driver.get(start_url)
 
+    resp_text = body_text(driver)
+    if "too many requests" in resp_text:
+        logging.info("Too many requests error, backing off")
+        raise TimeoutException # backoff
+
+    btn = driver.find_element(By.ID, "cookie_action_close_header")
+    if btn and btn.is_displayed():
+        logging.info("accepting cookies")
+        time.sleep(0.5)
+        btn.click()  # close cookie popup
+        time.sleep(1)
+        logging.info("accepted cookies")
+
     # Fix chromedriver 103 bug
     time.sleep(0.2)
 
     resp_text = body_text(driver)
-    if "INTERNET CITA PREVIA" not in resp_text:
+    if "CITA PREVIA" not in resp_text:
         context.first_load = True
         raise TimeoutException
 
@@ -851,7 +865,7 @@ def select_operation(driver: webdriver, context: CustomerProfile):
     except Exception as e:
         logging.error(e)
 
-    logging.info("Office selected")
+    logging.info("Operation selected (?)")
 
 
 def skip_instructions(driver: webdriver, context: CustomerProfile):
@@ -885,6 +899,7 @@ def cycle_cita(driver: webdriver, context: CustomerProfile, start_url):
 
     # page 1-3: Next
     driver.find_element(By.ID, "btnAceptar").click()
+    logging.info(f"Accepted")
 
     # page 2: Instructions
     res = skip_instructions(driver, context)
@@ -930,6 +945,7 @@ def cycle_cita(driver: webdriver, context: CustomerProfile, start_url):
         WebDriverWait(driver, 7).until(EC.presence_of_element_located((By.ID, "btnConsultar")))
     except TimeoutException:
         logging.error("Timed out waiting for Solicitar page to load")
+        return None
 
     try:
         wait_exact_time(driver, context)
